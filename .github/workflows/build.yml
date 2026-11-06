@@ -66,10 +66,10 @@ jobs:
                 openssl openssl-dev elfutils-dev zstd python3 kmod >/dev/null
               make ARCH=arm64 LLVM=1 olddefconfig
               make ARCH=arm64 LLVM=1 \
-                HOSTCFLAGS_sign-file.o="-I$(pwd)/include/uapi -I$(pwd)/tools/include/uapi" \
+                HOSTCFLAGS_sign-file.o="-I$(pwd)/include/uapi -I$(pwd)/arch/arm64/include/uapi -I$(pwd)/arch/arm64/include/generated/uapi -I$(pwd)/tools/include/uapi" \
                 modules_prepare -j"$(nproc)"
               make ARCH=arm64 LLVM=1 \
-                HOSTCFLAGS_sign-file.o="-I$(pwd)/include/uapi -I$(pwd)/tools/include/uapi" \
+                HOSTCFLAGS_sign-file.o="-I$(pwd)/include/uapi -I$(pwd)/arch/arm64/include/uapi -I$(pwd)/arch/arm64/include/generated/uapi -I$(pwd)/tools/include/uapi" \
                 M=sound/soc/codecs KBUILD_MODPOST_WARN=1 modules -j"$(nproc)"
               modinfo -F vermagic sound/soc/codecs/snd-soc-wcd934x.ko > /src/out/VERMAGIC.txt
               zstd -19 -f -o /src/out/snd-soc-wcd934x.ko.zst \
