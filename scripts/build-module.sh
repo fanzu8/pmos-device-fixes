@@ -36,12 +36,6 @@ if grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config; then
 	./scripts/config --file .config -d DEBUG_INFO_BTF -d DEBUG_INFO_BTF_MODULES
 fi
 
-# Module signing is not enforced by the phone kernel; disabling it also avoids
-# building scripts/sign-file for the host.
-if grep -q '^CONFIG_MODULE_SIG=y' .config; then
-	./scripts/config --file .config -d MODULE_SIG -d MODULE_SIG_ALL -d MODULE_SIG_FORMAT
-fi
-
 mkdir -p "$OUT"
 docker run --rm -u 0 \
 	-v "$PWD:/src" \
@@ -52,8 +46,12 @@ docker run --rm -u 0 \
 		apk add --no-cache build-base clang lld llvm make bc bison flex perl \
 			openssl openssl-dev elfutils-dev zstd python3 kmod >/dev/null
 		make ARCH=arm64 LLVM=1 olddefconfig
-		make ARCH=arm64 LLVM=1 modules_prepare -j"$(nproc)"
-		make ARCH=arm64 LLVM=1 M=sound/soc/codecs KBUILD_MODPOST_WARN=1 modules -j"$(nproc)"
+		make ARCH=arm64 LLVM=1 \
+			HOSTCFLAGS_sign-file.o="-I$(pwd)/include/uapi -I$(pwd)/tools/include/uapi" \
+			modules_prepare -j"$(nproc)"
+		make ARCH=arm64 LLVM=1 \
+			HOSTCFLAGS_sign-file.o="-I$(pwd)/include/uapi -I$(pwd)/tools/include/uapi" \
+			M=sound/soc/codecs KBUILD_MODPOST_WARN=1 modules -j"$(nproc)"
 		modinfo -F vermagic sound/soc/codecs/snd-soc-wcd934x.ko > /out/VERMAGIC.txt
 		zstd -19 -f -o /out/snd-soc-wcd934x.ko.zst sound/soc/codecs/snd-soc-wcd934x.ko
 	'
