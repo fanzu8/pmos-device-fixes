@@ -5,22 +5,24 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-    inputs:
-      kernel_tag:
-        description: "sdm845-mainline kernel tag"
-        required: false
-        default: "sdm845-6.16.7-r0"
 
 permissions:
   contents: read
 
-env:
-  KERNEL_TAG: ${{ github.event.inputs.kernel_tag || 'sdm845-6.16.7-r0' }}
-
 jobs:
   build:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kernel_tag: sdm845-6.16.7-r0
+            config: config/kernel-6.16.7.config
+            label: 6.16.7
+          - kernel_tag: sdm845-7.1-rc1-r0
+            config: config/kernel-7.1.config
+            label: 7.1-rc1
 
     steps:
       - uses: actions/checkout@v4
@@ -28,39 +30,44 @@ jobs:
       - name: Cache kernel source tarball
         uses: actions/cache@v4
         with:
-          path: linux-${{ env.KERNEL_TAG }}.tar.gz
-          key: kernel-${{ env.KERNEL_TAG }}
+          path: linux-${{ matrix.kernel_tag }}.tar.gz
+          key: kernel-${{ matrix.kernel_tag }}
 
       - name: Download kernel source
         run: |
           set -e
-          if [ ! -f "linux-${KERNEL_TAG}.tar.gz" ]; then
-            curl -fL -o "linux-${KERNEL_TAG}.tar.gz" \
-              "https://gitlab.com/sdm845-mainline/linux/-/archive/${KERNEL_TAG}/linux-${KERNEL_TAG}.tar.gz"
+          if [ ! -f "linux-${{ matrix.kernel_tag }}.tar.gz" ]; then
+            curl -fL -o "linux-${{ matrix.kernel_tag }}.tar.gz" \
+              "https://gitlab.com/sdm845-mainline/linux/-/archive/${{ matrix.kernel_tag }}/linux-${{ matrix.kernel_tag }}.tar.gz"
           fi
-          tar xzf "linux-${KERNEL_TAG}.tar.gz"
+          tar xzf "linux-${{ matrix.kernel_tag }}.tar.gz"
 
       - name: Prepare source
         run: |
           set -e
-          cd "linux-${KERNEL_TAG}"
-          cp ../config/kernel.config .config
+          cd "linux-${{ matrix.kernel_tag }}"
+          cp "../${{ matrix.config }}" .config
           patch -p1 < ../patches/0001-ASoC-codecs-wcd934x-enable-MCLK-for-the-capture-path.patch
+          # BTF is not needed for a loadable module and would require pahole + vmlinux.
+          if grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config; then
+            ./scripts/config --file .config -d DEBUG_INFO_BTF -d DEBUG_INFO_BTF_MODULES
+          fi
 
-      - name: Build module (Alpine clang 21, same as pmOS)
+      - name: Build module (Alpine clang, same as pmOS)
         run: |
           set -e
           mkdir -p out
           docker run --rm -u 0 \
             -v "$PWD:/src" \
-            -w "/src/linux-${KERNEL_TAG}" \
+            -w "/src/linux-${{ matrix.kernel_tag }}" \
             alpine:3.23 sh -c '
               set -e
               apk add --no-cache build-base clang lld llvm make bc bison flex perl \
-                openssl-dev elfutils-dev zstd python3 >/dev/null
+                openssl openssl-dev elfutils-dev zstd python3 kmod >/dev/null
               make ARCH=arm64 LLVM=1 olddefconfig
               make ARCH=arm64 LLVM=1 modules_prepare -j"$(nproc)"
               make ARCH=arm64 LLVM=1 M=sound/soc/codecs KBUILD_MODPOST_WARN=1 modules -j"$(nproc)"
+              modinfo -F vermagic sound/soc/codecs/snd-soc-wcd934x.ko > /src/out/VERMAGIC.txt
               zstd -19 -f -o /src/out/snd-soc-wcd934x.ko.zst \
                 sound/soc/codecs/snd-soc-wcd934x.ko
             '
@@ -71,13 +78,14 @@ jobs:
           cd out
           sha256sum snd-soc-wcd934x.ko.zst > snd-soc-wcd934x.ko.zst.sha256
           cp ../ucm/HiFi.conf ../ucm/VoiceCall.conf .
+          KVER=$(sed 's/ .*//' VERMAGIC.txt)
           cat > INSTALL.txt <<EOF
-          Kernel tag: ${KERNEL_TAG}
-          Expected vermagic: 6.16.7-sdm845 SMP preempt mod_unload aarch64
+          Kernel tag: ${{ matrix.kernel_tag }}
+          Vermagic:   $(cat VERMAGIC.txt)
 
           Install on the phone:
-            sudo cp snd-soc-wcd934x.ko.zst /lib/modules/6.16.7-sdm845/kernel/sound/soc/codecs/
-            sudo depmod -a 6.16.7-sdm845
+            sudo cp snd-soc-wcd934x.ko.zst /lib/modules/${KVER}/kernel/sound/soc/codecs/
+            sudo depmod -a ${KVER}
             sudo cp HiFi.conf /usr/share/alsa/ucm2/OnePlus/enchilada/HiFi.conf
             sudo cp VoiceCall.conf /usr/share/alsa/ucm2/OnePlus/enchilada/VoiceCall.conf
             sudo reboot
@@ -88,7 +96,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wcd934x-capture-fix-${{ env.KERNEL_TAG }}
+          name: wcd934x-capture-fix-${{ matrix.label }}
           path: out/
           if-no-files-found: error
           retention-days: 30

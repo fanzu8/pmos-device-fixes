@@ -164,7 +164,8 @@ ucm/VoiceCall.conf
 │   ├── 0001-ASoC-codecs-wcd934x-enable-MCLK-for-the-capture-path.patch
 │   └── 0002-OnePlus-enchilada-use-software-volume-for-capture.patch
 ├── config/
-│   └── kernel.config              # 手机 /proc/config.gz
+│   ├── kernel-6.16.7.config       # 手机 /proc/config.gz (v25.12)
+│   └── kernel-7.1.config          # pmaports main 的 7.1_rc1 config
 ├── ucm/
 │   ├── HiFi.conf                 # 已去掉 CaptureMixerElem/CaptureVolume
 │   └── VoiceCall.conf
@@ -184,7 +185,11 @@ ucm/VoiceCall.conf
 依赖：Docker（arm64）。
 
 ```sh
+# 6.16.7（当前 v25.12）
 ./scripts/build-module.sh /path/to/linux-sdm845-6.16.7-r0
+
+# 7.1-rc1（edge）
+./scripts/build-module.sh /path/to/linux-sdm845-7.1-rc1-r0 config/kernel-7.1.config
 ```
 
 脚本内部使用 `alpine:3.23` + clang 21（和原内核 `CONFIG_CC_VERSION_TEXT` 一致）：
@@ -196,34 +201,41 @@ make ARCH=arm64 LLVM=1 M=sound/soc/codecs KBUILD_MODPOST_WARN=1 modules -j$(npro
 zstd -19 -f -o snd-soc-wcd934x.ko.zst sound/soc/codecs/snd-soc-wcd934x.ko
 ```
 
+> 7.1 的 config 默认开了 BTF，构建脚本会关掉 `CONFIG_DEBUG_INFO_BTF*`。
+> BTF 只影响调试信息，不影响模块 ABI/加载。
+
 检查：
 
 ```sh
-objdump -s -j .modinfo snd-soc-wcd934x.ko | grep vermagic
-# vermagic=6.16.7-sdm845 SMP preempt mod_unload aarch64
+modinfo -F vermagic snd-soc-wcd934x.ko.zst
+# 6.16.7: 6.16.7-sdm845 SMP preempt mod_unload aarch64
+# 7.1:    7.1.0-rc1-sdm845 SMP preempt mod_unload aarch64
 ```
 
 ---
 
-## CI 产物
+## CI 产物（两个）
 
-GitHub Actions 会在以下情况自动编译：
+Push 到 `main` 或手动 `workflow_dispatch` 会**并行编译两个内核**：
 
-- push 到 `main`
-- 手动 `workflow_dispatch`（可指定 `kernel_tag`）
+| Artifact | 内核 | 用途 |
+|---|---|---|
+| `wcd934x-capture-fix-6.16.7` | `6.16.7-sdm845` | pmOS v25.12 |
+| `wcd934x-capture-fix-7.1-rc1` | `7.1.0-rc1-sdm845` | pmOS edge |
 
-产物（Actions → 对应 run → Artifacts）：
+每个 artifact 包含：
 
 ```
 snd-soc-wcd934x.ko.zst
 snd-soc-wcd934x.ko.zst.sha256
+VERMAGIC.txt
 HiFi.conf
 VoiceCall.conf
 INSTALL.txt
 ```
 
-CI 使用 `ubuntu-24.04-arm` 原生 arm64 runner + Docker `alpine:3.23`，
-和本地构建环境一致。
+CI 使用 `ubuntu-24.04-arm` 原生 arm64 runner + Docker `alpine:3.23`。
+7.1 的 config 默认开了 BTF，构建时会被关闭（只影响调试信息，不影响模块加载）。
 
 ---
 
@@ -235,14 +247,15 @@ CI 使用 `ubuntu-24.04-arm` 原生 arm64 runner + Docker `alpine:3.23`，
 ./scripts/install-on-phone.sh
 ```
 
-或手动：
+或手动（把 `<KVER>` 换成手机上的 `uname -r`，例如 `6.16.7-sdm845` 或 `7.1.0-rc1-sdm845`）：
 
 ```sh
-scp prebuilt/snd-soc-wcd934x.ko.zst user@172.16.42.1:/tmp/
+scp snd-soc-wcd934x.ko.zst user@172.16.42.1:/tmp/
 ssh user@172.16.42.1
+KVER=$(uname -r)
 sudo cp /tmp/snd-soc-wcd934x.ko.zst \
-  /lib/modules/6.16.7-sdm845/kernel/sound/soc/codecs/snd-soc-wcd934x.ko.zst
-sudo depmod -a 6.16.7-sdm845
+  /lib/modules/$KVER/kernel/sound/soc/codecs/snd-soc-wcd934x.ko.zst
+sudo depmod -a $KVER
 sudo cp HiFi.conf /usr/share/alsa/ucm2/OnePlus/enchilada/HiFi.conf
 sudo cp VoiceCall.conf /usr/share/alsa/ucm2/OnePlus/enchilada/VoiceCall.conf
 sudo reboot
@@ -268,6 +281,11 @@ arecord -D hw:0,1 -f S16_LE -r 48000 -c 1 -d 3 /tmp/test.wav
 这个驱动比较老，是否上游化看维护者反馈；对 pmOS 来说，上面的 GitLab MR 更直接。
 
 ---
+
+## Secrets
+
+本仓库不包含任何 token、密钥、密码或凭据；CI 不需要任何 secrets。
+提交前会扫描常见密钥/令牌格式（`ghp_` / `gho_` / `glpat` / `PRIVATE KEY` 等）以及 `.env` / `*.pem` / `*.key` 文件。
 
 ## 注意
 
