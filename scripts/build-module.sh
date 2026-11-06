@@ -39,7 +39,7 @@ fi
 # Module signing is not enforced by the phone kernel; disabling it also avoids
 # building scripts/sign-file for the host.
 if grep -q '^CONFIG_MODULE_SIG=y' .config; then
-	./scripts/config --file .config -d MODULE_SIG
+	./scripts/config --file .config -d MODULE_SIG -d MODULE_SIG_ALL -d MODULE_SIG_FORMAT
 fi
 
 mkdir -p "$OUT"
