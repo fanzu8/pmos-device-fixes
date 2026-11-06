@@ -201,8 +201,9 @@ make ARCH=arm64 LLVM=1 M=sound/soc/codecs KBUILD_MODPOST_WARN=1 modules -j$(npro
 zstd -19 -f -o snd-soc-wcd934x.ko.zst sound/soc/codecs/snd-soc-wcd934x.ko
 ```
 
-> 7.1 的 config 默认开了 BTF，构建脚本会关掉 `CONFIG_DEBUG_INFO_BTF*`。
-> BTF 只影响调试信息，不影响模块 ABI/加载。
+> 7.1 的 config 默认开了 BTF 和 MODULE_SIG，构建脚本会关掉：
+> BTF 只影响调试信息；手机内核没有 `MODULE_SIG_FORCE`，未签名模块可以正常加载。
+> 关掉 MODULE_SIG 还能避免构建 `scripts/sign-file` 时的 host include 问题。
 
 检查：
 

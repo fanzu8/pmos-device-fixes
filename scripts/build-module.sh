@@ -36,6 +36,12 @@ if grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config; then
 	./scripts/config --file .config -d DEBUG_INFO_BTF -d DEBUG_INFO_BTF_MODULES
 fi
 
+# Module signing is not enforced by the phone kernel; disabling it also avoids
+# building scripts/sign-file for the host.
+if grep -q '^CONFIG_MODULE_SIG=y' .config; then
+	./scripts/config --file .config -d MODULE_SIG
+fi
+
 mkdir -p "$OUT"
 docker run --rm -u 0 \
 	-v "$PWD:/src" \
