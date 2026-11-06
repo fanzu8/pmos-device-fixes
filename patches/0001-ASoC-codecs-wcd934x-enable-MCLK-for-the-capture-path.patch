@@ -1,0 +1,54 @@
+From 18a2a81828f0c12d2f1f71281922cfea46d14550 Mon Sep 17 00:00:00 2001
+From: fanzu8 <tuzengbing@gmail.com>
+Date: Fri, 6 Nov 2026 22:39:40 +0800
+Subject: [PATCH] ASoC: codecs: wcd934x: enable MCLK for the capture path
+
+The WCD934x ADC and DMIC blocks need the codec MCLK (and the analog
+bias that is enabled together with it) to run.  The playback path gets
+this through the INTn_CLK supplies, but the capture path has no such
+dependency, so MCLK stays off while recording and the ADCs return only
+zero samples.
+
+Add MCLK as a supply for the ADC and DMIC widgets so that recording
+powers up the codec clock and analog bias.
+
+Tested on OnePlus 6 (sdm845): before this change arecord/parecord
+returned all-zero data; after it, capture works normally and MCLK/ADC/
+MIC BIAS are powered down again when the stream stops.
+
+Signed-off-by: fanzu8 <tuzengbing@gmail.com>
+---
+ sound/soc/codecs/wcd934x.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/sound/soc/codecs/wcd934x.c b/sound/soc/codecs/wcd934x.c
+index 5443cb0..f2b6ccd 100644
+--- a/sound/soc/codecs/wcd934x.c
++++ b/sound/soc/codecs/wcd934x.c
+@@ -5772,6 +5772,23 @@ static const struct snd_soc_dapm_route wcd934x_audio_map[] = {
+ 	WCD934X_ADC_MUX(7),
+ 	WCD934X_ADC_MUX(8),
+ 
++	/*
++	 * The ADC/DMIC blocks need the codec MCLK (and the analog bias that
++	 * is enabled together with it) to run.  The playback path gets this
++	 * through the INTn_CLK supplies, but without an explicit dependency
++	 * the capture path leaves MCLK off and captures nothing but zeros.
++	 */
++	{"ADC1", NULL, "MCLK"},
++	{"ADC2", NULL, "MCLK"},
++	{"ADC3", NULL, "MCLK"},
++	{"ADC4", NULL, "MCLK"},
++	{"DMIC0", NULL, "MCLK"},
++	{"DMIC1", NULL, "MCLK"},
++	{"DMIC2", NULL, "MCLK"},
++	{"DMIC3", NULL, "MCLK"},
++	{"DMIC4", NULL, "MCLK"},
++	{"DMIC5", NULL, "MCLK"},
++
+ 	{"CDC_IF TX0 MUX", "DEC0", "ADC MUX0"},
+ 	{"CDC_IF TX1 MUX", "DEC1", "ADC MUX1"},
+ 	{"CDC_IF TX2 MUX", "DEC2", "ADC MUX2"},
+-- 
+2.39.5 (Apple Git-154)
+

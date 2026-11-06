@@ -1,0 +1,94 @@
+name: build-wcd934x
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      kernel_tag:
+        description: "sdm845-mainline kernel tag"
+        required: false
+        default: "sdm845-6.16.7-r0"
+
+permissions:
+  contents: read
+
+env:
+  KERNEL_TAG: ${{ github.event.inputs.kernel_tag || 'sdm845-6.16.7-r0' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache kernel source tarball
+        uses: actions/cache@v4
+        with:
+          path: linux-${{ env.KERNEL_TAG }}.tar.gz
+          key: kernel-${{ env.KERNEL_TAG }}
+
+      - name: Download kernel source
+        run: |
+          set -e
+          if [ ! -f "linux-${KERNEL_TAG}.tar.gz" ]; then
+            curl -fL -o "linux-${KERNEL_TAG}.tar.gz" \
+              "https://gitlab.com/sdm845-mainline/linux/-/archive/${KERNEL_TAG}/linux-${KERNEL_TAG}.tar.gz"
+          fi
+          tar xzf "linux-${KERNEL_TAG}.tar.gz"
+
+      - name: Prepare source
+        run: |
+          set -e
+          cd "linux-${KERNEL_TAG}"
+          cp ../config/kernel.config .config
+          patch -p1 < ../patches/0001-ASoC-codecs-wcd934x-enable-MCLK-for-the-capture-path.patch
+
+      - name: Build module (Alpine clang 21, same as pmOS)
+        run: |
+          set -e
+          mkdir -p out
+          docker run --rm -u 0 \
+            -v "$PWD:/src" \
+            -w "/src/linux-${KERNEL_TAG}" \
+            alpine:3.23 sh -c '
+              set -e
+              apk add --no-cache build-base clang lld llvm make bc bison flex perl \
+                openssl-dev elfutils-dev zstd python3 >/dev/null
+              make ARCH=arm64 LLVM=1 olddefconfig
+              make ARCH=arm64 LLVM=1 modules_prepare -j"$(nproc)"
+              make ARCH=arm64 LLVM=1 M=sound/soc/codecs KBUILD_MODPOST_WARN=1 modules -j"$(nproc)"
+              zstd -19 -f -o /src/out/snd-soc-wcd934x.ko.zst \
+                sound/soc/codecs/snd-soc-wcd934x.ko
+            '
+
+      - name: Package
+        run: |
+          set -e
+          cd out
+          sha256sum snd-soc-wcd934x.ko.zst > snd-soc-wcd934x.ko.zst.sha256
+          cp ../ucm/HiFi.conf ../ucm/VoiceCall.conf .
+          cat > INSTALL.txt <<EOF
+          Kernel tag: ${KERNEL_TAG}
+          Expected vermagic: 6.16.7-sdm845 SMP preempt mod_unload aarch64
+
+          Install on the phone:
+            sudo cp snd-soc-wcd934x.ko.zst /lib/modules/6.16.7-sdm845/kernel/sound/soc/codecs/
+            sudo depmod -a 6.16.7-sdm845
+            sudo cp HiFi.conf /usr/share/alsa/ucm2/OnePlus/enchilada/HiFi.conf
+            sudo cp VoiceCall.conf /usr/share/alsa/ucm2/OnePlus/enchilada/VoiceCall.conf
+            sudo reboot
+          EOF
+
+      - name: Show artifact
+        run: ls -lh out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wcd934x-capture-fix-${{ env.KERNEL_TAG }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 30

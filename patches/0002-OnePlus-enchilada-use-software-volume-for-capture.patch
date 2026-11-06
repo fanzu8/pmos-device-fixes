@@ -1,0 +1,69 @@
+From 6b5013078c4aa8029302fb5d149e75c7b48fab1b Mon Sep 17 00:00:00 2001
+From: fanzu8 <tuzengbing@gmail.com>
+Date: Fri, 6 Nov 2026 22:39:54 +0800
+Subject: [PATCH] OnePlus: enchilada: use software capture volume
+
+The capture volume controls (ADC2/3/4 Volume) have a dB range of
+0..+5 dB with 0 dB marked as mute.  PulseAudio's default source volume
+is about -5 dB, which is below that range and gets clamped to 0, muting
+the microphone even though the codec capture path is running.
+
+Drop CaptureMixerElem/CaptureVolume for the capture devices so that
+PulseAudio uses software volume and leaves the codec gains at the values
+configured by the UCM BootSequence (ADC=16, DEC=75).
+
+Tested on OnePlus 6 (enchilada): recording works at any PulseAudio
+source volume, and the hardware gains stay at the intended values.
+
+Signed-off-by: fanzu8 <tuzengbing@gmail.com>
+---
+ ucm2/OnePlus/enchilada/HiFi.conf      | 6 ------
+ ucm2/OnePlus/enchilada/VoiceCall.conf | 2 --
+ 2 files changed, 8 deletions(-)
+
+diff --git a/ucm2/OnePlus/enchilada/HiFi.conf b/ucm2/OnePlus/enchilada/HiFi.conf
+index c2e2caa..7eacf60 100644
+--- a/ucm2/OnePlus/enchilada/HiFi.conf
++++ b/ucm2/OnePlus/enchilada/HiFi.conf
+@@ -76,8 +76,6 @@ SectionDevice."Mic1" {
+ 	Value {
+ 		CapturePriority 200
+ 		CapturePCM "hw:${CardId},1" # MultiMedia2
+-		CaptureMixerElem "ADC4"
+-		CaptureVolume "ADC4 Volume"
+ 	}
+ }
+ 
+@@ -114,8 +112,6 @@ SectionDevice."Mic2" {
+ 	Value {
+ 		CapturePriority 100
+ 		CapturePCM "hw:${CardId},3" # MultiMedia4
+-		CaptureMixerElem "ADC3"
+-		CaptureVolume "ADC3 Volume"
+ 	}
+ }
+ 
+@@ -160,8 +156,6 @@ SectionDevice."Headset" {
+ 	Value {
+ 		CapturePriority 30
+ 		CapturePCM "hw:${CardId},5" # MultiMedia6
+-		CaptureMixerElem "ADC2"
+-		CaptureVolume "ADC2 Volume"
+ 		JackControl "Headphone Jack"
+ 	}
+ }
+diff --git a/ucm2/OnePlus/enchilada/VoiceCall.conf b/ucm2/OnePlus/enchilada/VoiceCall.conf
+index c78c40f..ffc8e66 100644
+--- a/ucm2/OnePlus/enchilada/VoiceCall.conf
++++ b/ucm2/OnePlus/enchilada/VoiceCall.conf
+@@ -79,7 +79,5 @@ SectionDevice."Mic" {
+ 	Value {
+ 		CapturePriority 200
+ 		CapturePCM "hw:${CardId},1" # MultiMedia2
+-		CaptureMixerElem "ADC4"
+-		CaptureVolume "ADC4 Volume"
+ 	}
+ }
+-- 
+2.39.5 (Apple Git-154)
+

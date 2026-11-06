@@ -1,0 +1,7 @@
+out/
+linux-*.tar.gz
+linux-*/
+*.ko
+*.o
+*.cmd
+.tmp_versions/
