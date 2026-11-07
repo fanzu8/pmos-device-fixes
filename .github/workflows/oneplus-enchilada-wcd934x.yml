@@ -1,13 +1,22 @@
-name: build-wcd934x
+name: oneplus-enchilada-wcd934x
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'devices/oneplus-enchilada/audio/wcd934x-mic/**'
+      - '.github/workflows/oneplus-enchilada-wcd934x.yml'
   pull_request:
+    paths:
+      - 'devices/oneplus-enchilada/audio/wcd934x-mic/**'
+      - '.github/workflows/oneplus-enchilada-wcd934x.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  FIX_DIR: devices/oneplus-enchilada/audio/wcd934x-mic
 
 jobs:
   build:
@@ -18,10 +27,10 @@ jobs:
       matrix:
         include:
           - kernel_tag: sdm845-6.16.7-r0
-            config: config/kernel-6.16.7.config
+            config: kernel-6.16.7.config
             label: 6.16.7
           - kernel_tag: sdm845-7.1-rc1-r0
-            config: config/kernel-7.1.config
+            config: kernel-7.1.config
             label: 7.1-rc1
 
     steps:
@@ -46,8 +55,8 @@ jobs:
         run: |
           set -e
           cd "linux-${{ matrix.kernel_tag }}"
-          cp "../${{ matrix.config }}" .config
-          patch -p1 < ../patches/0001-ASoC-codecs-wcd934x-enable-MCLK-for-the-capture-path.patch
+          cp "../$FIX_DIR/config/${{ matrix.config }}" .config
+          patch -p1 < "../$FIX_DIR/patches/0001-ASoC-codecs-wcd934x-enable-MCLK-for-the-capture-path.patch"
           # BTF is not needed for a loadable module and would require pahole + vmlinux.
           if grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config; then
             ./scripts/config --file .config -d DEBUG_INFO_BTF -d DEBUG_INFO_BTF_MODULES
@@ -81,7 +90,7 @@ jobs:
           set -e
           cd out
           sha256sum snd-soc-wcd934x.ko.zst > snd-soc-wcd934x.ko.zst.sha256
-          cp ../ucm/HiFi.conf ../ucm/VoiceCall.conf .
+          cp "../$FIX_DIR/ucm/HiFi.conf" "../$FIX_DIR/ucm/VoiceCall.conf" .
           KVER=$(sed 's/ .*//' VERMAGIC.txt)
           cat > INSTALL.txt <<EOF
           Kernel tag: ${{ matrix.kernel_tag }}
@@ -100,7 +109,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wcd934x-capture-fix-${{ matrix.label }}
+          name: oneplus-enchilada-wcd934x-${{ matrix.label }}
           path: out/
           if-no-files-found: error
           retention-days: 30

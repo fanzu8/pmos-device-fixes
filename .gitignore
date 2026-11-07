@@ -1,4 +1,5 @@
 out/
+devices/**/out/
 linux-*.tar.gz
 linux-*/
 *.ko
