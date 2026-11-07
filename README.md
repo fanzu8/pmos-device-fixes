@@ -79,6 +79,15 @@ Actions：
 https://github.com/fanzu8/pmos-device-fixes/actions
 ```
 
+Releases（每个内核一个）：
+
+```
+https://github.com/fanzu8/pmos-device-fixes/releases
+```
+
+- `oneplus-enchilada-wcd934x-6.16.7`
+- `oneplus-enchilada-wcd934x-7.1-rc1`
+
 每个 artifact 包含：
 
 ```
